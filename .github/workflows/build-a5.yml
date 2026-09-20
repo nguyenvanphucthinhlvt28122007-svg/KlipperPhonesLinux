@@ -55,8 +55,7 @@ jobs:
             -f='Status=${Status}\nArchitecture=${Architecture}\nVersion=${Version}\n' \
             "libssl-dev:${arch}"
 
-          dpkg-checkbuilddeps \
-            <(printf 'Source: kernel\n\nBuild-Depends: libssl-dev\n')
+          apt-cache policy "libssl-dev:${arch}"
           
       - name: Clone kernel source
         run: |
@@ -89,7 +88,11 @@ jobs:
           cd LinuxKernels/scripts
           {
             echo '```text'
-            tail -n 200 compile.log
+            if [ -f compile.log ]; then
+              tail -n 200 compile.log
+            else
+              echo "Compilation did not start; compile.log was not created."
+            fi
             echo '```'
           } > error_snippet.txt
           gh issue create --title "Build failed for Samsung A5" --body-file error_snippet.txt || true
