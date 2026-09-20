@@ -1,4 +1,5 @@
 source ./env.sh
+set -e
 
 echo $CROSS_COMPILE
 echo $ARCH
