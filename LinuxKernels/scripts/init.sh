@@ -1,10 +1,25 @@
-echo "正在安装依赖，请确保系统为Ubuntu20.04"
-sudo apt install binfmt-support qemu-user-static gcc-aarch64-linux-gnu fakeroot simg2img img2simg mkbootimg bison flex pkg-config libncurses-dev libssl-dev unzip git rsync
+#!/bin/sh
+set -eu
 
-# echo "正在下载内核源码(6.7.5)"
-# git clone https://gitee.com/meiziyang2023/linux.git
+export DEBIAN_FRONTEND=noninteractive
+arch="$(dpkg --print-architecture)"
 
-# echo "拷贝内核配置文件"
-# cp ./.config ./linux/.config
+sudo apt-get update
+sudo apt-get install -y \
+  binfmt-support \
+  qemu-user-static \
+  gcc-aarch64-linux-gnu \
+  fakeroot \
+  simg2img \
+  img2simg \
+  mkbootimg \
+  bison \
+  flex \
+  pkg-config \
+  "libncurses-dev:${arch}" \
+  "libssl-dev:${arch}" \
+  unzip \
+  git \
+  rsync
 
-sudo mkdir /mnt/chroot
+sudo mkdir -p /mnt/chroot
