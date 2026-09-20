@@ -18,25 +18,44 @@ jobs:
 
       - name: Setup environment
         run: |
+          set -euxo pipefail
           cd LinuxKernels/scripts
           chmod +x *.sh
           sudo apt-get update -y
+          sudo apt-get install -y \
+            unzip \
+            debhelper \
+            debhelper-compat \
+            libdw-dev \
+            libelf-dev \
+            libssl-dev \
+            bc \
+            bison \
+            flex \
+            libncurses-dev \
+            pahole \
+            binutils-aarch64-linux-gnu \
+            gcc-aarch64-linux-gnu
           sudo ./init.sh
-          sudo apt-get install -y unzip
           
       - name: Clone kernel source
         run: |
+          set -euxo pipefail
           cd LinuxKernels/scripts
           git clone https://github.com/msm8916-mainline/linux --depth 1 ./linux
+          find ./linux -type f -name control -print0 | xargs -0 sed -i 's/debhelper-compat (= 12)/debhelper-compat (>= 12)/g' || true
           
       - name: Copy Kernel Config
         run: |
+          set -euxo pipefail
           cd LinuxKernels/scripts
           cp ../msm8916/.config ./linux/.config
+          make -C ./linux ARCH=arm64 olddefconfig
           
       - name: Compile Kernel
         id: compile
         run: |
+          set -o pipefail
           cd LinuxKernels/scripts
           ./full_compile.sh 2>&1 | tee compile.log
           
