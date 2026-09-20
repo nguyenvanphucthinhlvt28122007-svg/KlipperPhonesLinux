@@ -7,9 +7,8 @@ echo $CC
 
 cd ./linux
 make clean
-rm -r ./debian
-make -j$(nproc)
-fakeroot make-kpkg  --initrd --cross-compile aarch64-linux-gnu- --arch arm64 kernel_image kernel_headers
+rm -rf ./debian
+make bindeb-pkg -j$(nproc)
 cd ..
 
 # ./umount_rootfs.sh
