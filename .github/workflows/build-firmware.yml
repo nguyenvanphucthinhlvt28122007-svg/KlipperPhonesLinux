@@ -1,0 +1,106 @@
+name: Build Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_repo:
+        description: 'Kernel Repository URL'
+        required: true
+        default: 'https://github.com/msm8953-mainline/linux'
+      device_folder:
+        description: 'Device configuration folder name (e.g., msm8953)'
+        required: true
+        default: 'msm8953'
+      dtb_name:
+        description: 'DTB identifier for get_kernel_files.sh (e.g., mido)'
+        required: true
+        default: 'mido'
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup environment
+        run: |
+          cd LinuxKernels/scripts
+          chmod +x *.sh
+          sudo ./init.sh
+          sudo apt-get install -y unzip
+          
+      - name: Clone kernel source
+        run: |
+          cd LinuxKernels/scripts
+          git clone ${{ github.event.inputs.kernel_repo }} --depth 1 ./linux
+          
+      - name: Copy Kernel Config
+        run: |
+          cd LinuxKernels/scripts
+          cp ../${{ github.event.inputs.device_folder }}/.config ./linux/.config
+          
+      - name: Compile Kernel
+        run: |
+          cd LinuxKernels/scripts
+          ./full_compile.sh
+          
+      - name: Download and setup RootFS
+        run: |
+          cd LinuxKernels/scripts
+          wget https://github.com/umeiko/KlipperPhonesLinux/releases/download/base_rootfs/klipperos_base_rootfs.zip
+          
+          # Find the .img file inside the zip and extract it
+          img_file=$(unzip -Z1 klipperos_base_rootfs.zip | grep -E '\.img$' | head -n 1)
+          unzip klipperos_base_rootfs.zip
+          
+          # Rename to root.img as expected by mount_rootfs.sh
+          if [ "$img_file" != "root.img" ] && [ -n "$img_file" ]; then
+            mv "$img_file" root.img
+          fi
+          
+      - name: Mount RootFS
+        run: |
+          cd LinuxKernels/scripts
+          sudo mkdir -p /mnt/chroot
+          
+          # Remove the interactive chroot command from the end of the script
+          sed -i '/chroot \/mnt\/chroot/d' mount_rootfs.sh
+          
+          # Run the mount script as root
+          sudo ./mount_rootfs.sh
+          
+      - name: Install Kernel in RootFS
+        run: |
+          sudo chroot /mnt/chroot /bin/bash -c "cd /tmp && chmod +x install_kernel.sh && ./install_kernel.sh"
+          
+      - name: Copy Firmware
+        run: |
+          cd LinuxKernels/scripts
+          if [ -d "../${{ github.event.inputs.device_folder }}/firmware" ]; then
+            sudo cp -r ../${{ github.event.inputs.device_folder }}/firmware/* /mnt/chroot/lib/firmware/
+          else
+            echo "No firmware folder found, skipping."
+          fi
+          
+      - name: Generate Flash Package
+        run: |
+          cd LinuxKernels/scripts
+          # Modify get_kernel_files.sh with the correct dtb_name
+          sed -i "s/\*mido\*/\*${{ github.event.inputs.dtb_name }}\*/g" get_kernel_files.sh
+          sudo ./get_kernel_files.sh
+          sudo ./mkboot.sh
+          
+      - name: Unmount RootFS
+        run: |
+          cd LinuxKernels/scripts
+          sudo ./umount_rootfs.sh
+          
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: KlipperOS-Firmware-${{ github.event.inputs.dtb_name }}
+          path: |
+            LinuxKernels/scripts/tmp_mkboot/boot.img
+            LinuxKernels/scripts/tmp_mkboot/rootfs.img
