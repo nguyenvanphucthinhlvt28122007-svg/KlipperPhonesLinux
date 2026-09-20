@@ -1,0 +1,110 @@
+name: Build Samsung A5 Firmware
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-a5.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      issues: write
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          cd LinuxKernels/scripts
+          chmod +x *.sh
+          sudo apt-get update -y
+          sudo ./init.sh
+          sudo apt-get install -y unzip
+          
+      - name: Clone kernel source
+        run: |
+          cd LinuxKernels/scripts
+          git clone https://github.com/msm8916-mainline/linux --depth 1 ./linux
+          
+      - name: Copy Kernel Config
+        run: |
+          cd LinuxKernels/scripts
+          cp ../msm8916/.config ./linux/.config
+          
+      - name: Compile Kernel
+        id: compile
+        run: |
+          cd LinuxKernels/scripts
+          ./full_compile.sh 2>&1 | tee compile.log
+          
+      - name: Report Error
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Build failed. Creating an issue with logs."
+          cd LinuxKernels/scripts
+          echo '```text' > error_snippet.txt
+          tail -n 200 compile.log >> error_snippet.txt
+          echo '```' >> error_snippet.txt
+          gh issue create --title "Build failed for Samsung A5" --body-file error_snippet.txt
+          
+      - name: Download and setup RootFS
+        if: success()
+        run: |
+          cd LinuxKernels/scripts
+          wget https://github.com/umeiko/KlipperPhonesLinux/releases/download/base_rootfs/klipperos_base_rootfs.zip
+          img_file=$(unzip -Z1 klipperos_base_rootfs.zip | grep -E '\.img$' | head -n 1)
+          unzip klipperos_base_rootfs.zip
+          if [ "$img_file" != "root.img" ] && [ -n "$img_file" ]; then
+            mv "$img_file" root.img
+          fi
+          
+      - name: Mount RootFS
+        if: success()
+        run: |
+          cd LinuxKernels/scripts
+          sudo mkdir -p /mnt/chroot
+          sed -i '/chroot \/mnt\/chroot/d' mount_rootfs.sh
+          sudo ./mount_rootfs.sh
+          
+      - name: Install Kernel in RootFS
+        if: success()
+        run: |
+          sudo chroot /mnt/chroot /bin/bash -c "cd /tmp && chmod +x install_kernel.sh && ./install_kernel.sh"
+          
+      - name: Copy Firmware
+        if: success()
+        run: |
+          cd LinuxKernels/scripts
+          if [ -d "../msm8916/firmware" ]; then
+            sudo cp -r ../msm8916/firmware/* /mnt/chroot/lib/firmware/
+          else
+            echo "No firmware folder found, skipping."
+          fi
+          
+      - name: Generate Flash Package
+        if: success()
+        run: |
+          cd LinuxKernels/scripts
+          sed -i "s/\*mido\*/\*a5u\*/g" get_kernel_files.sh
+          sudo ./get_kernel_files.sh
+          sudo ./mkboot.sh
+          
+      - name: Unmount RootFS
+        if: always()
+        run: |
+          cd LinuxKernels/scripts
+          sudo ./umount_rootfs.sh || true
+          
+      - name: Upload Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KlipperOS-Firmware-a5u
+          path: |
+            LinuxKernels/scripts/tmp_mkboot/boot.img
+            LinuxKernels/scripts/tmp_mkboot/rootfs.img
