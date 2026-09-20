@@ -37,6 +37,10 @@ jobs:
             binutils-aarch64-linux-gnu \
             gcc-aarch64-linux-gnu
           sudo ./init.sh
+          # Reinstall libssl-dev after init.sh
+          sudo apt-get update -y
+          sudo apt-get install -y --reinstall libssl-dev
+          dpkg-query -W -f='${Status}\n' libssl-dev
           
       - name: Clone kernel source
         run: |
@@ -61,15 +65,18 @@ jobs:
           
       - name: Report Error
         if: failure()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Build failed. Creating an issue with logs."
           cd LinuxKernels/scripts
-          echo '```text' > error_snippet.txt
-          tail -n 200 compile.log >> error_snippet.txt
-          echo '```' >> error_snippet.txt
-          gh issue create --title "Build failed for Samsung A5" --body-file error_snippet.txt
+          {
+            echo '```text'
+            tail -n 200 compile.log
+            echo '```'
+          } > error_snippet.txt
+          gh issue create --title "Build failed for Samsung A5" --body-file error_snippet.txt || true
           
       - name: Download and setup RootFS
         if: success()
