@@ -7,6 +7,7 @@ echo $CC
 
 cd ./linux
 make clean
+make olddefconfig
 rm -rf ./debian
 make bindeb-pkg -j$(nproc)
 cd ..
